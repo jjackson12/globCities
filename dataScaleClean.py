@@ -6,31 +6,35 @@ import numpy as np
 
 ### Run Parameters
 
+# TODO: Get data again, don't delete country indicators, and separate into different countries in different sheets(?)
+
 # List of years to include 
 # If multiple years are selected, the values are averaged into the output
 # TODO: Is that a good idea?^
 years = ['2000','2001','2002','2003','2004','2005']
-# filename of data source being cleaned, input
-fIn_Data = "GDP_EU.xls"
-# filename of data source being added to. Will be deleted. Leave empty if first run
+# filenames of data source being cleaned, input
+# TODO: Reformat with adding cities as index, try to avoid weird outputs
+fIn_Data = {"GDP": "GDP_EU.xls","Population":"PopEU.xls","Patents":"PatentEU.xls"}
+# spreadsheet connecting countries with cities
+# filename of data source being output. Will be deleted if already existing.
 fOut = "EUFeatures.xls"
-# filename for output data. This may be created or extended by this script
-retFile = "EUFeatures.xls"
 # What feature the input dataset contains, e.g. GDP or Patents
-feat ="GDP"
+feats = ["Population","GDP","Patents"]
 # if True, include cities in the input dataset that are NOT in the old (compiled) dataset
 addPartialData = True
-# set to True if you are updating with more features (i.e., EUFeatures already has data that should stay there)
-updateFeatures = True
+# list of countries to include
+# full:
+allCountries = ["United Kingdom","Brussels","Germany","France","Czech Republic","Switzerland","Spain","Portugal"]
 
-
-
-
-
+includeCountries = allCountries
+#TODO: Fix this change elsewhere; update allCountries list
 
 # compiles data from outD, a dataframe which already may have several 
 # features, with the new data from inD, the cleaned input dataframe
 def addData(outD,inD):
+
+    if outD.empty:
+        return inD
 
     # add new data as new column on the right, empty at first and fill in for loop
     outD[feat] = np.nan
@@ -81,8 +85,6 @@ def merge(row):
     else: 
         rowL = list(map(lambda x: float(x),rowL))
         return np.average(rowL)
-
-
 def hasData(dat):
     try:
         return isinstance(dat,int) or isinstance(dat,float)
@@ -90,7 +92,17 @@ def hasData(dat):
         if np.isnan(dat) or (":" in dat):
             return False
 
-
+def splitCountries(rawData):
+    countryTables = {}
+    currCountry = 'START'
+    for index, row in rawData.iterrows():
+        cityName = row['METROREG/TIME']
+        if cityName in allCountries:
+            if not 'START' in currCountry:
+                #select from previous countryName to next country name (then subtract the country data)
+                countryTables[currCountry] = rawData.loc[currCountry:cityName][1:-1]
+            currCountry = cityName
+    return countryTables
 
 
 
@@ -99,45 +111,52 @@ dtypes = {'METROREG/TIME': str}
 #for year in years:
 #    dtypes = dtypes.update({year: float})
 
-# open input file, specifying datatypes and which years to select
-inData = pd.read_excel(fIn_Data,dtype=dtypes)    
 
 
+outData = {}
 
-#merge only selected years of data
-inData[feat] = inData[years].apply(merge, axis=1)
+for feat in feats:
+    # open input file, specifying datatypes and which years to select
+    inDataRaw = pd.read_excel(fIn_Data[feat],dtype=dtypes)    
+
+    # split raw input into countries
+    # inData: map: country name -> dataframe
+    inData = splitCountries(inDataRaw)
+
+    for country in includeCountries:
+        # Check if country is in data
+        if not country in inData:
+            exceptionMsg = country + " not found! input data includes countries "+
+            "(note there may be others not caught if they were not included in allCountries parameter): "+inData.keys()
+            raise Exception(exceptionMsg)
+
+        #merge only selected years of data
+        inData[country][feat] = inData[country][years].apply(merge, axis=1)
+
+        # after combining/extracting data, remove other years
+        inData[country] = inData[country][['METROREG/TIME',feat]]
+        # remove cities without data
+        inData[country] = inData[country].dropna()
+        # remove "Non-metropolitan regions in _"
+        for index,row in inData[country].iterrows():
+            if "Non-metropolitan" in row['METROREG/TIME']:
+                inData[country] = inData[country].drop(index,axis=0)
+
+        # if outData is empty
+        if not bool(outData) or not country in outData:
+                outData[country] = inData[country]
+        else:
+            outData[country] = addData(outData[country],inData[country])
 
 
+    ### add to new file
 
-# after combining/extracting data, remove other years
-inData = inData[['METROREG/TIME',feat]]
-# remove cities without data
-inData = inData.dropna()
-# remove "Non-metropolitan regions in _"
-for index,row in inData.iterrows():
-    if "Non-metropolitan" in row['METROREG/TIME']:
-        inData = inData.drop(index,axis=0)
-
-
-### add to new file
-
-# if file exists, read it, delete, and rewrite it after adding new data
-if updateFeatures and os.path.exists(fOut):
-    outData = pd.read_excel(fOut)
-    outData = addData(outData,inData)
+# if file exists, delete it, and rewrite it after adding new data
+if os.path.exists(fOut):
     os.remove(fOut)
-else:
-    outData = inData
-    if(os.path.exists(fOut)):
-        os.remove(fOut)
 
-
-#set year label for output filename
-if len(years) == 1:
-    yearLab = years[0]
-else:
-    yearLab = years[0] + years[-1]
-
-outData.set_index('METROREG/TIME')
-
-outData.to_excel(retFile)
+# write each country data to different sheets in output
+with pd.ExcelWriter(fOut) as writer:
+    for country in includeCountries:
+        outData[country].set_index('METROREG/TIME')
+        outData[country].to_excel(writer, sheet_name=country)
