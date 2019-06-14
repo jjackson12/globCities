@@ -6,9 +6,6 @@ import numpy as np
 
 ### Run Parameters
 
-# TODO: Get data again, don't delete country indicators, and separate into different countries in different sheets(?)
-
-# List of years to include 
 # If multiple years are selected, the values are averaged into the output
 # TODO: Is that a good idea?^
 years = ['2000','2001','2002','2003','2004','2005']
@@ -16,18 +13,15 @@ years = ['2000','2001','2002','2003','2004','2005']
 # TODO: Reformat with adding cities as index, try to avoid weird outputs
 fIn_Data = {"GDP": "GDP_EU.xls","Population":"PopEU.xls","Patents":"PatentEU.xls"}
 # spreadsheet connecting countries with cities
+fIn_CountryCities = "CountryCities.xlsx"
 # filename of data source being output. Will be deleted if already existing.
 fOut = "EUFeatures.xls"
 # What feature the input dataset contains, e.g. GDP or Patents
 feats = ["Population","GDP","Patents"]
 # if True, include cities in the input dataset that are NOT in the old (compiled) dataset
 addPartialData = True
-# list of countries to include
-# full:
-allCountries = ["United Kingdom","Brussels","Germany","France","Czech Republic","Switzerland","Spain","Portugal"]
-
-includeCountries = allCountries
-#TODO: Fix this change elsewhere; update allCountries list
+# list of countries to include. Either write "ALL" or give a list
+includeCountries = ['ALL']
 
 # compiles data from outD, a dataframe which already may have several 
 # features, with the new data from inD, the cleaned input dataframe
@@ -41,18 +35,18 @@ def addData(outD,inD):
     
     # for every name ALREADY IN THE OUTPUT data 
 
-    for indexI, rowI in inD.iterrows():
+    for cityI, rowI in inD.iterrows():
         # keep track of whether or not city from new data is already in the old data
         matched = False
-        for indexO,rowO in outD.iterrows():
-            if cityNameMatch(rowO['METROREG/TIME'],rowI['METROREG/TIME']):
+        for cityO,rowO in outD.iterrows():
+            if cityNameMatch(cityO,cityI):
                 matched = True
-                outD[feat][indexO] = rowI[feat]
+                outD[feat][cityO] = rowI[feat]
                 break
         # if the new city is not in the old data, add only if the tag for adding partial data is set to true
         if not matched and addPartialData:
             # Add as new row
-            outD = outD.append({'METROREG/TIME' : rowI['METROREG/TIME'], feat : rowI[feat] },ignore_index=True)
+            outD = outD.append(rowI)
     return outD
 
 
@@ -92,16 +86,45 @@ def hasData(dat):
         if np.isnan(dat) or (":" in dat):
             return False
 
+def getCities(country):
+    return list(filter(lambda x: isinstance(x,str), countryCities[country]))
+
 def splitCountries(rawData):
     countryTables = {}
-    currCountry = 'START'
-    for index, row in rawData.iterrows():
-        cityName = row['METROREG/TIME']
-        if cityName in allCountries:
-            if not 'START' in currCountry:
-                #select from previous countryName to next country name (then subtract the country data)
-                countryTables[currCountry] = rawData.loc[currCountry:cityName][1:-1]
-            currCountry = cityName
+    rawData = rawData.set_index('METROREG/TIME')
+    unmatched = []
+    for cityName in list(rawData.index):
+        # skip over "Non-metropolitan Areas" and any NaN entries or "Special"nd any NaN entries or ""
+        if not cityName == cityName or "Non-metropolitan" in cityName:
+            continue
+        if ':' in cityName or "Special" in cityName:
+            continue
+        match = False
+        for country in allCountries:
+            for loggedCityName in getCities(country):
+                if cityNameMatch(cityName,loggedCityName):
+                    match = True
+                    if country not in countryTables:
+                        #TODO: This needs to be a dataframe; it's not right now
+                        countryTables[country] = rawData[cityName:cityName]
+                    else:
+                        countryTables[country] = countryTables[country].append(rawData[cityName:cityName])
+                    break
+            if(match): break
+        if not match:
+            unmatched.append(cityName)
+    if not len(unmatched) == 0:
+        errorMsg = "Could not match cities: "+ str(unmatched) + "\n see countryCities excel"
+        # add nan to the rest of the unmatched list to fit index length
+        for i in range(len(unmatched),(len(list(countryCities.index)))):
+            unmatched.append(np.nan)
+        # add to "unmatched" column in countryCities
+        countryCities['UNMATCHED'] = unmatched
+        # TODO: Uncomment
+        os.remove(fIn_CountryCities)
+        countryCities.to_excel(fIn_CountryCities)
+        # throw error
+        raise Exception(errorMsg)
     return countryTables
 
 
@@ -111,14 +134,18 @@ dtypes = {'METROREG/TIME': str}
 #for year in years:
 #    dtypes = dtypes.update({year: float})
 
+countryCities = pd.read_excel(fIn_CountryCities,dtypes=dtypes)
+allCountries = countryCities.columns
+if 'ALL' in includeCountries[0]:
+    includeCountries = allCountries
 
+print("Beginning... including countries: \n" + str(includeCountries))
 
 outData = {}
 
 for feat in feats:
     # open input file, specifying datatypes and which years to select
     inDataRaw = pd.read_excel(fIn_Data[feat],dtype=dtypes)    
-
     # split raw input into countries
     # inData: map: country name -> dataframe
     inData = splitCountries(inDataRaw)
@@ -126,21 +153,21 @@ for feat in feats:
     for country in includeCountries:
         # Check if country is in data
         if not country in inData:
-            exceptionMsg = country + " not found! input data includes countries "+
-            "(note there may be others not caught if they were not included in allCountries parameter): "+inData.keys()
-            raise Exception(exceptionMsg)
-
+            exceptionMsg = ("WARNING! ... "+ country +" not found in input Datafile for "+feat)
+            print(exceptionMsg)
+            continue
         #merge only selected years of data
         inData[country][feat] = inData[country][years].apply(merge, axis=1)
 
         # after combining/extracting data, remove other years
-        inData[country] = inData[country][['METROREG/TIME',feat]]
+        inData[country] = inData[country][[feat]]
         # remove cities without data
         inData[country] = inData[country].dropna()
+        # OBSELETE: Now done in splitCountry function
         # remove "Non-metropolitan regions in _"
-        for index,row in inData[country].iterrows():
-            if "Non-metropolitan" in row['METROREG/TIME']:
-                inData[country] = inData[country].drop(index,axis=0)
+        # for index,row in inData[country].iterrows():
+        #    if "Non-metropolitan" in row['METROREG/TIME']:
+        #        inData[country] = inData[country].drop(index,axis=0)
 
         # if outData is empty
         if not bool(outData) or not country in outData:
@@ -157,6 +184,5 @@ if os.path.exists(fOut):
 
 # write each country data to different sheets in output
 with pd.ExcelWriter(fOut) as writer:
-    for country in includeCountries:
-        outData[country].set_index('METROREG/TIME')
+    for country in outData:
         outData[country].to_excel(writer, sheet_name=country)
