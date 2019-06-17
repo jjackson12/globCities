@@ -6,11 +6,13 @@ import numpy as np
 
 ### Run Parameters
 
+# TODO: "Alicante/Alacant - Elche/Elx" got mixed together in output and they are different. Make
+# sure cities aren't being accidentally conjoined.
+
 # If multiple years are selected, the values are averaged into the output
 # TODO: Is that a good idea?^
 years = ['2000','2001','2002','2003','2004','2005']
 # filenames of data source being cleaned, input
-# TODO: Reformat with adding cities as index, try to avoid weird outputs
 fIn_Data = {"GDP": "GDP_EU.xls","Population":"PopEU.xls","Patents":"PatentEU.xls"}
 # spreadsheet connecting countries with cities
 fIn_CountryCities = "CountryCities.xlsx"
@@ -89,15 +91,25 @@ def hasData(dat):
 def getCities(country):
     return list(filter(lambda x: isinstance(x,str), countryCities[country]))
 
+# do not include cityEntries that are:
+# Null
+# "Non-metropolitan areas"
+# empty entries (":" or "Special")
+# TODO: Verify with Vicky; separate cities that are joined using '-'
+def filterCity(cityName):
+    return not cityName == cityName or "Non-metropolitan" in cityName or ':' in cityName or "Special" in cityName or " - " in cityName
+
 def splitCountries(rawData):
     countryTables = {}
     rawData = rawData.set_index('METROREG/TIME')
     unmatched = []
+    filtered = []
     for cityName in list(rawData.index):
-        # skip over "Non-metropolitan Areas" and any NaN entries or "Special"nd any NaN entries or ""
-        if not cityName == cityName or "Non-metropolitan" in cityName:
-            continue
-        if ':' in cityName or "Special" in cityName:
+        # filter unwanted city entries #TODO: just like with unmatched, add 
+        # the filtered cities to a column or at least text output somewhere
+        # to keep track of what is being filtered
+        if filterCity(cityName): 
+            filtered.append(cityName)
             continue
         match = False
         for country in allCountries:
@@ -105,7 +117,6 @@ def splitCountries(rawData):
                 if cityNameMatch(cityName,loggedCityName):
                     match = True
                     if country not in countryTables:
-                        #TODO: This needs to be a dataframe; it's not right now
                         countryTables[country] = rawData[cityName:cityName]
                     else:
                         countryTables[country] = countryTables[country].append(rawData[cityName:cityName])
@@ -113,14 +124,16 @@ def splitCountries(rawData):
             if(match): break
         if not match:
             unmatched.append(cityName)
+    with open('filtered.txt', 'w+') as f:
+        for item in filtered:
+            f.write("%s\n" % item)
     if not len(unmatched) == 0:
         errorMsg = "Could not match cities: "+ str(unmatched) + "\n see countryCities excel"
         # add nan to the rest of the unmatched list to fit index length
-        for i in range(len(unmatched),(len(list(countryCities.index)))):
-            unmatched.append(np.nan)
+        for i in range(len(filtered),(len(list(countryCities.index)))):
+            filtered.append(np.nan)
         # add to "unmatched" column in countryCities
         countryCities['UNMATCHED'] = unmatched
-        # TODO: Uncomment
         os.remove(fIn_CountryCities)
         countryCities.to_excel(fIn_CountryCities)
         # throw error
@@ -145,7 +158,7 @@ outData = {}
 
 for feat in feats:
     # open input file, specifying datatypes and which years to select
-    inDataRaw = pd.read_excel(fIn_Data[feat],dtype=dtypes)    
+    inDataRaw = pd.read_excel(fIn_Data[feat],dtype=dtypes)   
     # split raw input into countries
     # inData: map: country name -> dataframe
     inData = splitCountries(inDataRaw)
