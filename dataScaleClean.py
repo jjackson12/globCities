@@ -6,24 +6,24 @@ import numpy as np
 
 ### Run Parameters
 
-# TODO: "Alicante/Alacant - Elche/Elx" got mixed together in output and they are different. Make
-# sure cities aren't being accidentally conjoined.
-
 # If multiple years are selected, the values are averaged into the output
 # TODO: Is that a good idea?^
 years = ['2000','2001','2002','2003','2004','2005']
 # filenames of data source being cleaned, input
-fIn_Data = {"GDP": "GDP_EU.xls","Population":"PopEU.xls","Patents":"PatentEU.xls"}
+fIn_Data = {"GDP": "GDP_EU.xls","Population":"PopEU.xls","Patents":"PatentEU.xls","gini":"gini_2016UK.xls","Connectivity":"da12.xls"}
 # spreadsheet connecting countries with cities
 fIn_CountryCities = "CountryCities.xlsx"
 # filename of data source being output. Will be deleted if already existing.
 fOut = "EUFeatures.xls"
 # What feature the input dataset contains, e.g. GDP or Patents
-feats = ["Population","GDP","Patents"]
+feats = ["Population","GDP","Patents","gini","Connectivity"]
 # if True, include cities in the input dataset that are NOT in the old (compiled) dataset
 addPartialData = True
 # list of countries to include. Either write "ALL" or give a list
 includeCountries = ['ALL']
+# cities to exclude due to aggregation into collective MAs.
+# TODO: Consider combining these data into the one collective MA
+excludeCities = ['Blackburn','Blackpool','Preston']
 
 # compiles data from outD, a dataframe which already may have several 
 # features, with the new data from inD, the cleaned input dataframe
@@ -57,14 +57,19 @@ def addData(outD,inD):
 # in different languages, are the same cities. Cities with more than one way 
 # of spelling will have them separated by '/'
 def cityNameMatch(name1,name2):
-    name1List = name1.split('/')
-    name2List = name2.split('/')
+    
+    name1List = name1.lower().replace("(nuts 2010)","").split('/')
+    name2List = name2.lower().replace("(nuts 2010)","").split('/')
     for subName1 in name1List:
         for subName2 in name2List:
-            if (subName1 in subName2) or (subName2 in subName1):
+            #if (subName1 in subName2 or subName2 in subName1) and not subName1.strip() == subName2.strip():
+            #    print("edge case matching - %s , %s", (subName1, subName2))
+            # TODO: Matching false positives (Kiel & Kielce)
+            #if (subName1 in subName2) or (subName2 in subName1):
+            if subName1.strip() == subName2.strip():
                 return True
     return False
-
+#print(cityNameMatch())
 
 # How to parse the years of data for a given city
 def merge(row):
@@ -87,6 +92,17 @@ def hasData(dat):
     except AttributeError: 
         if np.isnan(dat) or (":" in dat):
             return False
+def replaceCityNames(inData, country):
+    retData = inData
+    for city, rowI in inData.iterrows():
+        for loggedCityName in getCities(country):
+            #remove cities to be excluded here
+            if city in excludeCities:
+                retData = retData.drop([city])
+            if cityNameMatch(city,loggedCityName) and not city in excludeCities:
+                retData = retData.rename(index={city:loggedCityName})
+    return retData
+
 
 def getCities(country):
     return list(filter(lambda x: isinstance(x,str), countryCities[country]))
@@ -95,9 +111,11 @@ def getCities(country):
 # Null
 # "Non-metropolitan areas"
 # empty entries (":" or "Special")
+# National Average values
 # TODO: Verify with Vicky; separate cities that are joined using '-'
 def filterCity(cityName):
-    return not cityName == cityName or "Non-metropolitan" in cityName or ':' in cityName or "Special" in cityName or " - " in cityName
+    return not cityName == cityName or "Non-metropolitan" in cityName or ':' in cityName or "Special" in cityName or " - " in cityName or "National Average" in cityName
+
 
 def splitCountries(rawData):
     countryTables = {}
@@ -105,21 +123,23 @@ def splitCountries(rawData):
     unmatched = []
     filtered = []
     for cityName in list(rawData.index):
-        # filter unwanted city entries #TODO: just like with unmatched, add 
-        # the filtered cities to a column or at least text output somewhere
-        # to keep track of what is being filtered
+        # filter unwanted city entries       
         if filterCity(cityName): 
             filtered.append(cityName)
+            continue
+        if cityName in excludeCities:
             continue
         match = False
         for country in allCountries:
             for loggedCityName in getCities(country):
                 if cityNameMatch(cityName,loggedCityName):
                     match = True
+                    rawData = rawData.rename(index={cityName:loggedCityName})
                     if country not in countryTables:
-                        countryTables[country] = rawData[cityName:cityName]
+                        countryTables[country] = rawData[loggedCityName:loggedCityName]
                     else:
-                        countryTables[country] = countryTables[country].append(rawData[cityName:cityName])
+                        countryTables[country] = countryTables[country].append(rawData[loggedCityName:loggedCityName])
+
                     break
             if(match): break
         if not match:
@@ -127,17 +147,28 @@ def splitCountries(rawData):
     with open('filtered.txt', 'w+') as f:
         for item in filtered:
             f.write("%s\n" % item)
+
+    # output the unmatched and filtered city names
     if not len(unmatched) == 0:
         errorMsg = "Could not match cities: "+ str(unmatched) + "\n see countryCities excel"
-        # add nan to the rest of the unmatched list to fit index length
-        for i in range(len(filtered),(len(list(countryCities.index)))):
-            filtered.append(np.nan)
-        # add to "unmatched" column in countryCities
-        countryCities['UNMATCHED'] = unmatched
-        os.remove(fIn_CountryCities)
-        countryCities.to_excel(fIn_CountryCities)
+        # add nan to the rest of the unmatched list or countryCities dataframe to fit index length
+        lenUnmatch = len(unmatched)
+        lenCounCity = len(list(countryCities.index))
+        if lenCounCity > lenUnmatch:
+            for i in range(lenUnmatch,lenCounCity):
+                unmatched.append(np.nan)    
+            # add to "unmatched" column in countryCities
+            countryCities['UNMATCHED'] = unmatched
+            os.remove(fIn_CountryCities)
+            countryCities.to_excel(fIn_CountryCities)
+
+        elif lenUnmatch > lenCounCity:
+            with open('unmatched.txt', 'w+') as f:
+                for item in unmatched:
+                    f.write("%s\n" % item)
         # throw error
-        raise Exception(errorMsg)
+        if "Connectivity" not in feat:
+            raise Exception(errorMsg)
     return countryTables
 
 
@@ -152,6 +183,7 @@ allCountries = countryCities.columns
 if 'ALL' in includeCountries[0]:
     includeCountries = allCountries
 
+
 print("Beginning... including countries: \n" + str(includeCountries))
 
 outData = {}
@@ -162,6 +194,8 @@ for feat in feats:
     # split raw input into countries
     # inData: map: country name -> dataframe
     inData = splitCountries(inDataRaw)
+    #if "gini" in feat:
+    #    print(inData)
 
     for country in includeCountries:
         # Check if country is in data
@@ -169,8 +203,10 @@ for feat in feats:
             exceptionMsg = ("WARNING! ... "+ country +" not found in input Datafile for "+feat)
             print(exceptionMsg)
             continue
+        
         #merge only selected years of data
-        inData[country][feat] = inData[country][years].apply(merge, axis=1)
+        if "GDP" in feat or "Population" in feat or "Patents" in feat:
+            inData[country][feat] = inData[country][years].apply(merge, axis=1)
 
         # after combining/extracting data, remove other years
         inData[country] = inData[country][[feat]]
@@ -184,7 +220,7 @@ for feat in feats:
 
         # if outData is empty
         if not bool(outData) or not country in outData:
-                outData[country] = inData[country]
+            outData[country] = inData[country]
         else:
             outData[country] = addData(outData[country],inData[country])
 
