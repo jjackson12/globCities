@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # input data file
 fIn = "EUFeatures.xls"
 #what features to analyze
-feats = ["GDP","Patents","Connectivity"]#gini, Connectivity
+feats = ["GDP","Patents","Connectivity (normalized)"]#gini, Connectivity
 # all countries with significant amounts of data
 allCountries = ["United Kingdom","Germany","Spain","France","Netherlands","Italy","Poland","Romania"]
 # what countries to analyze. 
@@ -15,7 +15,11 @@ countries = [["United Kingdom"]]
 # Set true if you want to plot all possible countries individually
 includeTag = 'ALL/SEPARATE' # this plots all countries on individual country plots
 #includeTag = 'ALL/COMBINED' # this plots all countries together
-#incldueTag = 'LIST' # this allows manual lists of countries in "countries" above
+#includeTag = 'ALL/COMBINED+SEPARATE' # this plots each country individually plus all of EU as one (TODO: Not yet implemented)
+#includeTag = 'LIST' # this allows manual lists of countries in "countries" above
+# plot residuals vs connectivity
+plotResiduals = True
+
 if includeTag == 'ALL/SEPARATE':
     countries = []
     #for country in allCountries:
@@ -27,11 +31,9 @@ elif includeTag == 'LIST':
 else:
     print("WHAT COUNTRIES DO YOU WANT?")
 
-
 # map, mapping countryname to dataframe
 data = {}
-# plot residuals vs connectivity
-plotResiduals = True
+
 # TODO: Include error bars
 
 
@@ -63,7 +65,7 @@ def getScaleParams(plotData,feat):
     pop = plotData["Population"]
     y = plotData[feat]
     # transform to log-log space
-    if not "gini" in feat or "Connectivity" in feat:
+    if not "gini" in feat or "Connectivity (normalized)" in feat:
         pop = np.array(list(map(lambda x: np.log(x), pop)))
         y = np.array(list(map(lambda x: np.log(x), y)))
     # fit to linear function, extract Beta and y_0
@@ -83,8 +85,8 @@ for feat in feats:
     for countryList in countries:
         # calculate average connectivity for each country
         try:
-            connectivityData = getData(countryList,["Connectivity"])
-            connectivity = np.average(list(connectivityData["Connectivity"])) 
+            connectivityData = getData(countryList,["Connectivity (normalized)"])
+            connectivity = np.average(list(connectivityData["Connectivity (normalized)"])) 
             countryConn.append(connectivity)
         except KeyError as msg:
             print("in Beta vs. Connectivity, ",str(msg))
@@ -108,7 +110,7 @@ for feat in feats:
     plt.title(ttl)
     outDir = "Figures/ConnectivityRelations"
     outName = outDir +"/countryBetas_"+feat +".png"
-    plt.show()
+    #plt.show()
     plt.savefig(outName)
 
     # plot y0 vs connectivity for each country
@@ -120,7 +122,7 @@ for feat in feats:
     plt.title(ttl)
     outDir = "Figures/ConnectivityRelations"
     outName = outDir +"/countryY0s_"+feat +".png"
-    plt.show()
+    #plt.show()
     plt.savefig(outName)
 
 
@@ -173,11 +175,11 @@ for feat in feats:
         # create labels, legends, etc
         plt.title(plotName)
         plt.legend()
-        if "gini" in feat or "Connectivity" in feat:
+        if "gini" in feat or "Connectivity (normalized)" in feat:
             plt.xlabel('Population')
         else:
             plt.xlabel('ln(Population)')
-        if "gini" in feat or "Connectivity" in feat:
+        if "gini" in feat or "Connectivity (normalized)" in feat:
             yLab = feat
         else:
             yLab = "ln("+feat+")"
@@ -200,13 +202,13 @@ for feat in feats:
             connectivityData = pd.DataFrame()
             for country in countryList:
                 try:
-                    connectivityData = connectivityData.append(data[country][["Population",feat,"Connectivity"]].dropna())
+                    connectivityData = connectivityData.append(data[country][["Population",feat,"Connectivity (normalized)"]].dropna())
                 except KeyError as msg:
                     errMsg = str(msg) + "for " + feat+", "+country
                     print(errMsg)
             #skip over if country has no Connectivity data
             try:
-                connectivity = connectivityData["Connectivity"]
+                connectivity = connectivityData["Connectivity (normalized)"]
             except KeyError:
                 continue
             residuals = getResiduals(connectivityData["Population"],connectivityData[feat],Beta,y0)

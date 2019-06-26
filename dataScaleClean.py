@@ -8,15 +8,16 @@ import numpy as np
 
 # If multiple years are selected, the values are averaged into the output
 # TODO: Is that a good idea?^
+# TODO: Change years to later
 years = ['2000','2001','2002','2003','2004','2005']
 # filenames of data source being cleaned, input
-fIn_Data = {"GDP": "GDP_EU.xls","Population":"PopEU.xls","Patents":"PatentEU.xls","gini":"gini_2016UK.xls","Connectivity":"da12.xls"}
+fIn_Data = {"GDP": "GDP_EU.xls","Population":"PopEU.xls","Patents":"PatentEU.xls","gini":"gini_2016UK.xls","Connectivity (normalized)":"Connectivities.xls","airTraffic":"avia_paoac.xls"}
 # spreadsheet connecting countries with cities
 fIn_CountryCities = "CountryCities.xlsx"
 # filename of data source being output. Will be deleted if already existing.
 fOut = "EUFeatures.xls"
 # What feature the input dataset contains, e.g. GDP or Patents
-feats = ["Population","GDP","Patents","gini","Connectivity"]
+feats = ["Population","GDP","Patents","gini","Connectivity (normalized)"]
 # if True, include cities in the input dataset that are NOT in the old (compiled) dataset
 addPartialData = True
 # list of countries to include. Either write "ALL" or give a list
@@ -64,7 +65,6 @@ def cityNameMatch(name1,name2):
         for subName2 in name2List:
             #if (subName1 in subName2 or subName2 in subName1) and not subName1.strip() == subName2.strip():
             #    print("edge case matching - %s , %s", (subName1, subName2))
-            # TODO: Matching false positives (Kiel & Kielce)
             #if (subName1 in subName2) or (subName2 in subName1):
             if subName1.strip() == subName2.strip():
                 return True
@@ -92,6 +92,9 @@ def hasData(dat):
     except AttributeError: 
         if np.isnan(dat) or (":" in dat):
             return False
+
+#TODO: Why isn't this being used?!
+#TODO: Compile multiple entries for same city into one entry (particularly for airports)
 def replaceCityNames(inData, country):
     retData = inData
     for city, rowI in inData.iterrows():
@@ -99,7 +102,7 @@ def replaceCityNames(inData, country):
             #remove cities to be excluded here
             if city in excludeCities:
                 retData = retData.drop([city])
-            if cityNameMatch(city,loggedCityName) and not city in excludeCities:
+            elif cityNameMatch(city,loggedCityName):
                 retData = retData.rename(index={city:loggedCityName})
     return retData
 
@@ -107,21 +110,53 @@ def replaceCityNames(inData, country):
 def getCities(country):
     return list(filter(lambda x: isinstance(x,str), countryCities[country]))
 
+# TODO: Finish manually cleaning the excel sheet. NEED TO GO THROUGH MORE THOROUGHLY. 
+# Look into Pau/Tarbes to see how the Metropolitan Areas are defined
+# From there, go through each entry to carefully categorize the airports. While doing so,
+# make it extendable in the countryCities spreadsheet so I NEVER have to repeat this later
+
+# given airport, the name of an airport-city pair, return the city that airport is in
+def cityFromAirport(airport):
+    if "Unknown airport" in airport or "Other airport" in airport:
+        return "UNKNOWN"
+    else:
+        return airport.replace(" airport","")
+        #TODO: Double check
+
+# airportData: list of city-airport labels from Eurostat dataset of city air traffic, e.g. "PRAHA/RUZYNE airport"
+# returns the data with renamed indices
+def citiesFromAirports(airportData):
+    retData = pd.DataFrame()
+    #for city,row in airportData:
+        #TODO: Check for empty rows. Maybe merge datafirst?
+    return retData
+    
+
+
 # do not include cityEntries that are:
 # Null
 # "Non-metropolitan areas"
 # empty entries (":" or "Special")
 # National Average values
+# "UNKNOWN", as designated in airport-city conversions in function citiesFromAirports
 # TODO: Verify with Vicky; separate cities that are joined using '-'
 def filterCity(cityName):
     return not cityName == cityName or "Non-metropolitan" in cityName or ':' in cityName or "Special" in cityName or " - " in cityName or "National Average" in cityName
 
-
-def splitCountries(rawData):
+# TODO: Clean?
+# split all cities in rawData into their respective countries
+def splitCountries(rawDataIn,feat=''):
+    # map: countryName -> Dataframe of cities in that country
     countryTables = {}
-    rawData = rawData.set_index('METROREG/TIME')
+    rawData = rawDataIn.set_index('METROREG/TIME')
+    #keep track of unmatched cities, and cities that are filtered out
     unmatched = []
     filtered = []
+
+    # airport names have to be renamed to their respective cities 
+    if "airTraffic" in feat:
+        rawData = citiesFromAirports(rawData)
+
     for cityName in list(rawData.index):
         # filter unwanted city entries       
         if filterCity(cityName): 
@@ -132,21 +167,32 @@ def splitCountries(rawData):
         match = False
         for country in allCountries:
             for loggedCityName in getCities(country):
+                # if the cities match, do the following:
                 if cityNameMatch(cityName,loggedCityName):
                     match = True
-                    rawData = rawData.rename(index={cityName:loggedCityName})
+                    # 1) if the country has to be added, first add to country Table with this cities data, after renaming to the countryCities naming
                     if country not in countryTables:
+                        rawData = rawData.rename(index={cityName:loggedCityName})
                         countryTables[country] = rawData[loggedCityName:loggedCityName]
                     else:
-                        countryTables[country] = countryTables[country].append(rawData[loggedCityName:loggedCityName])
-
+                        #if the city is already included in the output dataset, add to the already existing city entry
+                        if loggedCityName in list(countryTables[country].index):
+                            print("adding "+cityName+" to "+loggedCityName)
+                            countryTables[country][loggedCityName:loggedCityName] = countryTables[country][loggedCityName:loggedCityName] + rawData[cityName:cityName]
+                        #otherwise, just add it as a new city entry
+                        else:
+                            rawData = rawData.rename(index={cityName:loggedCityName})
+                            countryTables[country] = countryTables[country].append(rawData[loggedCityName:loggedCityName])
                     break
             if(match): break
         if not match:
             unmatched.append(cityName)
-    with open('filtered.txt', 'w+') as f:
+    filteredTxtName = 'filtered_'+feat+".txt"
+    with open(filteredTxtName, 'w+') as f:
         for item in filtered:
             f.write("%s\n" % item)
+
+
 
     # output the unmatched and filtered city names
     if not len(unmatched) == 0:
@@ -163,7 +209,8 @@ def splitCountries(rawData):
             countryCities.to_excel(fIn_CountryCities)
 
         elif lenUnmatch > lenCounCity:
-            with open('unmatched.txt', 'w+') as f:
+            unmatchedTxtName = 'unmatched_'+feat+".txt"
+            with open(unmatchedTxtName, 'w+') as f:
                 for item in unmatched:
                     f.write("%s\n" % item)
         # throw error
@@ -190,10 +237,15 @@ outData = {}
 
 for feat in feats:
     # open input file, specifying datatypes and which years to select
-    inDataRaw = pd.read_excel(fIn_Data[feat],dtype=dtypes)   
+    if "airTraffic" in feat:
+        arrivals = pd.read_excel(fIn_Data[feat],dtype=dtypes,sheet_name="EUArrivals")
+        departures = pd.read_excel(fIn_Data[feat],dtype=dtypes,sheet_name="EUDepartures")
+        inDataRaw = arrivals + departures
+    else:
+        inDataRaw = pd.read_excel(fIn_Data[feat],dtype=dtypes)   
     # split raw input into countries
     # inData: map: country name -> dataframe
-    inData = splitCountries(inDataRaw)
+    inData = splitCountries(inDataRaw,feat=feat)
     #if "gini" in feat:
     #    print(inData)
 
