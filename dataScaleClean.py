@@ -86,6 +86,8 @@ def merge(row):
     else: 
         rowL = list(map(lambda x: float(x),rowL))
         return np.average(rowL)
+
+
 def hasData(dat):
     try:
         return isinstance(dat,int) or isinstance(dat,float)
@@ -222,8 +224,6 @@ def splitCountries(rawDataIn,feat=''):
 
 ### Read and Parse input file
 dtypes = {'METROREG/TIME': str}
-#for year in years:
-#    dtypes = dtypes.update({year: float})
 
 countryCities = pd.read_excel(fIn_CountryCities,dtypes=dtypes)
 allCountries = countryCities.columns
