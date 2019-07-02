@@ -53,8 +53,8 @@ dataPlotMin = 7
 # what type of connectivity to use for residual plotting
 connectivityTag = "Connectivity (symmetric)"
 # Set true if you want to plot all possible countries individually
-#includeTag = 'ALL/SEPARATE' # this plots all countries on individual country plots
-includeTag = 'ALL/COMBINED' # this plots all countries together
+includeTag = 'ALL/SEPARATE' # this plots all countries on individual country plots
+#includeTag = 'ALL/COMBINED' # this plots all countries together
 #includeTag = 'ALL/COMBINED+SEPARATE' # this plots each country individually plus all of EU as one (TODO: Not yet implemented)
 #includeTag = 'LIST' # this allows manual lists of countries in "countries" above
 # plot residuals vs connectivity
@@ -316,6 +316,7 @@ if plotResiduals:
             ttl = feat + " vs. Connectivity"
             plt.title(ttl)
             outDir = "Figures/ConnectivityRelations"
+            countryListName = ""
             if includeTag == 'ALL/COMBINED':
                 countryListName = "AllCountriess"
             else:
