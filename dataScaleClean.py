@@ -17,14 +17,12 @@ fIn_CountryCities = "CountryCities.xlsx"
 # filename of data source being output. Will be deleted if already existing.
 fOut = "EUFeatures.xls"
 # What feature the input dataset contains, e.g. GDP or Patents
-feats = ["Population","GDP","Patents","gini","Connectivity (normalized)"]
+feats = ["Connectivity (normalized)"]
 # if True, include cities in the input dataset that are NOT in the old (compiled) dataset
 addPartialData = True
 # list of countries to include. Either write "ALL" or give a list
 includeCountries = ['ALL']
 # cities to exclude due to aggregation into collective MAs.
-# TODO: Consider combining these data into the one collective MA
-excludeCities = ['Blackburn','Blackpool','Preston']
 
 # compiles data from outD, a dataframe which already may have several 
 # features, with the new data from inD, the cleaned input dataframe

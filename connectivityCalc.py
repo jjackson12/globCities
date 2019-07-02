@@ -6,11 +6,11 @@ import numpy as np
 ### This script is used to convert global firm presence metrics into city-based connectivity parameters
 
 # name of input file with service values
-fIn = "da11.xls"
+fIn = "Data/da11.xls"
 # name of output file with connectivity parameters
-fOut = "Connectivities.xls"
+fOut = "Data/Connectivities_SYM.xls"
 # connectivity Measure: Either 'symmetric' or 'asymmetric'
-connectivityMetric = "asymmetric"
+connectivityMetric = "symmetric"
 
 
 # read in data. These represent the service values v_ij (See Yang 2013)
