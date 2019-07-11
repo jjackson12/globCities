@@ -1,15 +1,18 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import sklearn.metrics as sk
+from scipy.optimize import curve_fit
 ##### This script is to run basic scaling law analyses
 
 ### user configs
+years = "2000-2005"
 # input data file
-fIn = "Features2000_2005.xls"
+fIn = "Features"+years.replace("-","_")+".xls"
 #what features to analyze
-feats = ["GDP","Unemployment"]
+feats = ["GDP","Disposable Income per Household","Unemployment"]
 # feats to be plotted on a linear regression rather than log-log
-linearFeats = ["Gini index", "Poverty Rate"]
+linearFeats = ["Gini Index"]
 # all countries with significant amounts of data
 allCountries = ['Australia',
 'Austria',
@@ -47,22 +50,39 @@ allCountries = ['Australia',
 'United States']
 
 # what countries to analyze. 
-countries = [["United Kingdom", "United States","Germany","France","Canada","Australia"]]
+#countries = [["United Kingdom"]]
+countries = [['Australia',
+'Canada',
+'Germany',
+'Spain',
+'France',
+'United Kingdom',
+'Italy',
+'United States']]
 # minimum number of datapoints to plot
 dataPlotMin = 7
 # what type of connectivity to use for residual plotting
-connectivityTag = "Connectivity (symmetric)"
-# Set true if you want to plot all possible countries individually
-includeTag = 'ALL/SEPARATE' # this plots all countries on individual country plots
-#includeTag = 'ALL/COMBINED' # this plots all countries together
+connectivityTags = {
+    "Connectivity (asymmetric)":0.5,
+    "Connectivity (symmetric)":0.5#,
+    #"Air Traffic":0.33
+}
+
+# what to call this combination of connectivities in output file
+connectivityLbl = "BothFirmConnectivities"
+# Set true if you want to plot all possible countries individually#
+#includeTag = 'ALL/SEPARATE' # this plots all countries on individual country plots
+includeTag = 'ALL/COMBINED' # this plots all countries together
 #includeTag = 'ALL/COMBINED+SEPARATE' # this plots each country individually plus all of EU as one (TODO: Not yet implemented)
 #includeTag = 'LIST' # this allows manual lists of countries in "countries" above
 # plot residuals vs connectivity
 plotResiduals = True
 # plot scaling relations
 plotScaling = False
-
-
+# try borrowed size fit with air traffic
+borrowedSizeFit = False
+# calculate residuals using difference ("diff") or ratio ("ratio")
+resCalc = "diff"
 
 
 if includeTag == 'ALL/SEPARATE':
@@ -87,14 +107,27 @@ data = {}
 
 
 
+
 def getResiduals(pop,feat,Beta,y0,featMean=1):
     residuals = []
     for cityPop,cityFeat in zip(pop,feat):
-        residual = cityFeat - (np.exp(y0)*(cityPop**Beta))
-        # normalize by mean of that country's feature
-        residual = residual/featMean
+        ## ratio
+        if resCalc=="ratio":
+            residual = cityFeat/(np.exp(y0)*(cityPop**Beta))
+        elif resCalc=="diff":
+            ## difference
+            residual = cityFeat - (np.exp(y0)*(cityPop**Beta))
+            # normalize by mean of that country's feature
+            residual = residual/featMean
+        else:
+            raise Exception("NO RESIDUAL CALCULATION GIVEN")
         residuals.append(residual)
+        if residual < -10:
+            print(cityPop)
+            print(cityFeat)
     return residuals
+
+
 
 def connScale(residuals):
     res = np.array(residuals)
@@ -136,7 +169,7 @@ def getScaleParams(plotData,feat):
 for country in allCountries:
     data[country] = pd.read_excel(fIn,sheet_name=country)
 
-
+# NOTE: OLD UNUSED CODE
 #plot Beta vs. Connectivity, y0 vs. Connectivity
 # NOTE: ONLY RUN THIS WITH INCLUDETAG = ALL/SEPARATE; DO NOT COMBINE COUNTRIES 
 if False:
@@ -170,10 +203,12 @@ if False:
         plt.ylabel("Beta (of country)")
         ttl = "Beta vs. Connectivity for "+feat
         plt.title(ttl)
-        outDir = "Figures/ConnectivityRelations"
+
+        outDir = "Figures/ConnectivityRelations/"+years
         outName = outDir +"/countryBetas_"+feat +".png"
         #plt.show()
         plt.savefig(outName)
+        plt.close()
 
         # plot y0 vs connectivity for each country
         plt.figure()
@@ -182,13 +217,13 @@ if False:
         plt.ylabel("Y_0 (of country)")
         ttl = "Y_0 vs. Connectivity for "+feat
         plt.title(ttl)
-        outDir = "Figures/ConnectivityRelations"
+        outDir = "Figures/ConnectivityRelations/"+years
         outName = outDir +"/countryY0s_"+feat +".png"
         #plt.show()
         plt.savefig(outName)
+        plt.close()
 
 
-#TODO: Clean up
 # Standard Scaling Analysis
 if plotScaling:
     for feat in feats:
@@ -214,11 +249,25 @@ if plotScaling:
             # get scaling parameters
             Beta,y0 = getScaleParams(plotData,feat) 
 
-            x_pop = np.array(list(map(lambda x: np.log(x), x_pop)))
-            y_feat = np.array(list(map(lambda x: np.log(x), y_feat)))
+            # TODO: Change to a log scale in plot, not in variables; also change fitting function here to match
+            if not feat in linearFeats:
+                x_pop = np.array(list(map(lambda x: np.log(x), x_pop)))
+                y_feat = np.array(list(map(lambda x: np.log(x), y_feat)))
+
 
             # plot standard scaling distributions
-            plt.figure()
+
+            countryListName = ""
+            if includeTag == 'ALL/COMBINED':
+                countryListName = "AllCountries"
+            else:
+                for country in countryList:
+                    app = country + "-"
+                    countryListName = countryListName + (app)
+            outDir = "Figures/ScalingFeatures/"+years
+            outName = outDir + "/" +countryListName[:-1]+"_"+feat+".png"
+
+            plt.figure(outName)
             plt.plot(x_pop, y_feat, 'bo')
             if Beta>1:
                 lbl = "Superlinear: Beta = "+str(round(Beta,3))
@@ -231,7 +280,7 @@ if plotScaling:
             x_space = np.linspace(np.min(x_pop),np.max(x_pop),len(x_pop))
             plt.plot(x_space, Beta*x_space+y0, '--k',label=lbl)
 
-            # plot null hypothesis linear fit
+            # plot null hypothesis linear fit TODO: Something went funky here, maybe check
             plt.plot(x_space, x_space + np.min(x_pop)*Beta + y0 -np.min(x_pop), ':r',label="Linear Fit") 
 
             # create name for plot
@@ -252,16 +301,9 @@ if plotScaling:
                 yLab = "ln("+feat+")"
             plt.ylabel(yLab)
             #save to file
-            countryListName = ""
-            if includeTag == 'ALL/COMBINED':
-                countryListName = "AllCountries"
-            else:
-                for country in countryList:
-                    app = country + "-"
-                    countryListName = countryListName + (app)
-            outDir = "Figures/ScalingFeatures"
-            outName = outDir + "/" +countryListName[:-1]+"_"+feat+".png"
+
             plt.savefig(outName)
+            plt.close()
 
 
 
@@ -271,51 +313,73 @@ if plotScaling:
 # Connectivity Analysis
 # plot residuals. Skip if there's no Connectivity Data
 if plotResiduals:
+    # do analysis seperately for every feature
     for feat in feats:
 
-        if connectivityTag in feat:
+        # ignore connectivity vs connectivity
+        skip = False
+        for connectivityTag in connectivityTags.keys(): 
+            if connectivityTag in feat:
+                skip = True
+                continue
+        if skip:
             continue
-        
-        residuals = []
-        connectivities = []
 
-        # for each country SEPARATELY, run fits on scaling relations to get residuals, collect with connectivity data
+
         # TODO: What about countries being plotted on linear-linear plot?
+        # for every set of countries to plot together, reset residuals and connectivities to be plotted together
         for countryList in countries:
+            residuals = []
+            connectivities = []
+            # for each country SEPARATELY, run fits on scaling relations to get residuals, collect with connectivity data
             for country in countryList:
-                plotData = data[country][["Population",feat,connectivityTag]].dropna()
+                dataToPull = ["Population",feat]
+                for connectivityTag in connectivityTags.keys():
+                    dataToPull.append(connectivityTag)
+                plotData = data[country][dataToPull].dropna()
 
                 # skip over countryLists without data
                 if plotData.empty:
                     msg = 'No Data for country {} and feature {}'.format(country,feat)
-                    print(msg)
+                    #print(msg)
                     continue
                     
                 # skip over countryLists with less than a set number of datapoints
                 if len(list(plotData.index)) < dataPlotMin:
                     msg = 'Not Enough Data for country {} and feature {}'.format(country,feat)
-                    print(msg)
+                    #print(msg)
                     continue
             
+                print("fitting ",country)
                 # get scaling parameters
                 Beta,y0 = getScaleParams(plotData,feat) 
-
+                #plt.figure()
+                ## sanitycheck for fittings
+                # pop = list(plotData["Population"])
+                # plt.plot(list(map(lambda x: np.log(x),pop)),list(map(lambda x: np.log(x),list(plotData[feat]))), 'ro')
+                # x_space = np.linspace(np.log(np.min(pop)),np.log(np.max(pop)),len(pop))
+                # plt.plot(x_space, Beta*x_space+y0, '--k')
+                # plt.show()
+                # plt.close()
                 feats = list(plotData[feat])
+
                 residuals = residuals + getResiduals(plotData["Population"],feats,Beta,y0,featMean=np.average(feats))
-                connectivities = connectivities + list(plotData[connectivityTag])
+
+                newConnectivities = {}
+                finalConnectivities = np.zeros(len(feats))
+                for connectivityTag in connectivityTags.keys():
+                    # for considering connectivity as deviation from scaling expectation of connectivity
+                    BetaC,y0C = getScaleParams(plotData,connectivityTag)
+                    newConnectivities[connectivityTag] = connectivityTags[connectivityTag] * np.array(getResiduals(plotData["Population"],plotData[connectivityTag],BetaC,y0C,featMean=np.average(list(plotData[connectivityTag]))))
+                    finalConnectivities = finalConnectivities + newConnectivities[connectivityTag]
+
+                    
+                connectivities = connectivities + list(finalConnectivities)#list(plotData[connectivityTag])
         
             if len(residuals) == 0:
                 continue
-            # TODO Label different countries differently, make residuals & connectivities into maps indexed by countries
-            plt .figure()
-            # 
-            #residuals = connScale(residuals)
-            plt.plot(connectivities,residuals,'bo')
-            plt.xlabel('Connectivity')
-            plt.ylabel("deviation from scaling expectation")
-            ttl = feat + " vs. Connectivity"
-            plt.title(ttl)
-            outDir = "Figures/ConnectivityRelations"
+            
+            outDir = "Figures/ConnectivityRelations/"+years
             countryListName = ""
             if includeTag == 'ALL/COMBINED':
                 countryListName = "AllCountriess"
@@ -323,6 +387,99 @@ if plotResiduals:
                 for country in countryList:
                     app = country + "-"
                     countryListName = countryListName + (app)
-            outName = outDir + "/" + countryListName[:-1]+"_"+feat+"_"+connectivityTag+".png"
-            #outName = outDir + "/LargeCountries_" + feat+ "_Connectivity"
+            
+
+            outName = outDir + "/" + countryListName[:-1]+"_"+feat+"_"+connectivityLbl+ "_"+resCalc+ ".png"
+            #outName = outDir + "/AllCountries_" + feat+ "_Connectivity"
+            # TODO Label different countries differently, make residuals & connectivities into maps indexed by countries
+            plt.figure(outName)
+            # 
+            #residuals = connScale(residuals)
+            plt.loglog(connectivities,residuals,'bo')
+            xLbl = "deviation in " +connectivityLbl+" ("+resCalc+")"
+            yLbl = "deviation in "+feat+" ("+resCalc+")"
+            plt.xlabel(xLbl)
+            plt.ylabel(yLbl)
+            ttl = feat + " vs. "+connectivityLbl
+            plt.title(ttl)
+
             plt.savefig(outName)
+            plt.close()
+
+
+
+
+
+def borrowedSizeModel(x,y0,Beta,Alpha):
+    return y0*(x[:,0]+x[:,1]/Alpha)**Beta
+
+# Borrowed size fitting Analysis
+if borrowedSizeFit:
+    # do analysis seperately for every feature
+    
+    for feat in feats:
+        # ignore connectivity vs connectivity
+        skip = False
+        for connectivityTag in connectivityTags.keys(): 
+            if connectivityTag in feat:
+                skip = True
+                continue
+        if skip:
+            continue
+        for countryList in countries:
+            plotData = getDataFromList(countryList,["Population",feat,"Air Traffic"])
+
+            # skip over countryLists without data
+            if plotData.empty:
+                msg = 'No Data for country {} and feature {}'.format(country,feat)
+                #print(msg)
+                continue
+                
+            # skip over countryLists with less than a set number of datapoints
+            if len(list(plotData.index)) < dataPlotMin:
+                msg = 'Not Enough Data for country {} and feature {}'.format(country,feat)
+                #print(msg)
+                continue
+        
+            print("fitting for R^2 ",str(countryList))
+
+            pop = plotData["Population"]
+            featVals = plotData[feat]
+            aTraffic = plotData["Air Traffic"]
+            
+            # standard scaling parameters
+            Beta,y0 = getScaleParams(plotData,feat) 
+
+            concatData = []
+
+            for a,b,c in zip(pop,featVals,aTraffic):
+                concatData.append((a,b,c))
+            concatData = np.array(concatData)
+            guess = (y0,Beta,100000)
+            params, pcov = curve_fit(borrowedSizeModel,concatData[:,:2],concatData[:,2],guess)
+            y0BF,BetaBF,AlphaBF = params
+
+            
+
+            noBorrowFunc = lambda x: y0*x**Beta
+            BorrowFunc = lambda x,y: y0BF*(x+y/AlphaBF)**BetaBF
+
+
+            expectedFeatsStandard = []
+            expectedFeatsBorrow = []
+
+            for x,y in zip(pop,aTraffic):
+                expectedFeatsStandard.append(noBorrowFunc(x))                
+                expectedFeatsBorrow.append(BorrowFunc(x,y))                
+
+
+
+
+            R2_NoBorrowed = sk.r2_score(featVals,expectedFeatsStandard)
+            R2_WithBorrowed = sk.r2_score(featVals,expectedFeatsBorrow)
+            print("For Standard Scaling:\n, R^2 = {}, Beta = {}\n\nFor new model, \nR^2 = {}\nBeta={}\nAlpha={}\n\n".format(R2_NoBorrowed,Beta,R2_WithBorrowed,BetaBF,AlphaBF))
+
+            
+
+    
+            
