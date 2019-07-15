@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sklearn.metrics as sk
 from scipy.optimize import curve_fit
+from RegscorePy import *
 ##### This script is to run basic scaling law analyses
 
 ### user configs
@@ -51,14 +52,15 @@ allCountries = ['Australia',
 
 # what countries to analyze. 
 #countries = [["United Kingdom"]]
-countries = [['Australia',
-'Canada',
-'Germany',
-'Spain',
-'France',
+countries = [[#'Australia',
+#'Canada',
+#'Germany',
+#'Spain',
+#'France',
 'United Kingdom',
-'Italy',
-'United States']]
+#'Italy',
+#'United States'
+]]
 # minimum number of datapoints to plot
 dataPlotMin = 7
 # what type of connectivity to use for residual plotting
@@ -71,18 +73,18 @@ connectivityTags = {
 # what to call this combination of connectivities in output file
 connectivityLbl = "BothFirmConnectivities"
 # Set true if you want to plot all possible countries individually#
-#includeTag = 'ALL/SEPARATE' # this plots all countries on individual country plots
-includeTag = 'ALL/COMBINED' # this plots all countries together
+includeTag = 'ALL/SEPARATE' # this plots all countries on individual country plots
+#includeTag = 'ALL/COMBINED' # this plots all countries together
 #includeTag = 'ALL/COMBINED+SEPARATE' # this plots each country individually plus all of EU as one (TODO: Not yet implemented)
 #includeTag = 'LIST' # this allows manual lists of countries in "countries" above
 # plot residuals vs connectivity
-plotResiduals = True
+plotResiduals = False
 # plot scaling relations
 plotScaling = False
 # try borrowed size fit with air traffic
-borrowedSizeFit = False
-# calculate residuals using difference ("diff") or ratio ("ratio")
-resCalc = "diff"
+borrowedSizeFit = True
+# calculate residuals using difference ("diff") or ratio ("ratio") TODO: or "SAMI"
+resCalc = "ratio"
 
 
 if includeTag == 'ALL/SEPARATE':
@@ -411,7 +413,12 @@ if plotResiduals:
 
 
 def borrowedSizeModel(x,y0,Beta,Alpha):
-    return y0*(x[:,0]+x[:,1]/Alpha)**Beta
+    #print(str(x))
+    return y0*(x[:,0]+x[:,1]*Alpha)**Beta
+
+def standardModel(x,y0,Beta):
+    return y0*(x)**Beta
+
 
 # Borrowed size fitting Analysis
 if borrowedSizeFit:
@@ -426,6 +433,12 @@ if borrowedSizeFit:
                 continue
         if skip:
             continue
+
+        Alphas = {}
+        R2Ratios = {}
+        aicRatios = {}
+
+        #FIXME: error with running all countries
         for countryList in countries:
             plotData = getDataFromList(countryList,["Population",feat,"Air Traffic"])
 
@@ -442,42 +455,130 @@ if borrowedSizeFit:
                 continue
         
             print("fitting for R^2 ",str(countryList))
+            print("feat, ",feat)
 
             pop = plotData["Population"]
             featVals = plotData[feat]
             aTraffic = plotData["Air Traffic"]
-            
+
+            #guess = ()
             # standard scaling parameters
-            Beta,y0 = getScaleParams(plotData,feat) 
+            guess = (1,featVals[0]/pop[0])
+            (y0,Beta), pcov = curve_fit(standardModel,pop,featVals,guess)
+
 
             concatData = []
 
-            for a,b,c in zip(pop,featVals,aTraffic):
-                concatData.append((a,b,c))
+         
+            for a,b in zip(pop,aTraffic):
+                concatData.append((a,b))
+            #FIXME: Fix ordering
+            #dtype = [('pop', float), ('aTraffic', float)]
+            #concatData = np.array(concatData,dtype=dtype)
+            #concatData = np.sort(concatData, order='pop')
+
             concatData = np.array(concatData)
-            guess = (y0,Beta,100000)
-            params, pcov = curve_fit(borrowedSizeModel,concatData[:,:2],concatData[:,2],guess)
+            #concatData = list(map(lambda x: list(x), list(concatData)))
+            #print
+
+            guess = (y0,Beta,1/1000)
+            params, pcov = curve_fit(borrowedSizeModel,concatData[:,:2],featVals,guess)
             y0BF,BetaBF,AlphaBF = params
 
-            
 
             noBorrowFunc = lambda x: y0*x**Beta
-            BorrowFunc = lambda x,y: y0BF*(x+y/AlphaBF)**BetaBF
+            BorrowFunc = lambda x,y: y0BF*(x+y*AlphaBF)**BetaBF
+
+            plotNoBorrow = []
+            plotBorrow = []
+            for a,b in zip(pop,aTraffic):
+                plotBorrow.append(BorrowFunc(a,b))
+                plotNoBorrow.append(noBorrowFunc(a))
+            
+
+            outDir = "Figures/BorrowedSizeModeling/"+years
+            countryListName = ""
+            if includeTag == 'ALL/COMBINED':
+                countryListName = "AllCountriess"
+            else:
+                for country in countryList:
+                    app = country + "-"
+                    countryListName = countryListName + (app)
+            outName = outDir + "/" + countryListName[:-1]+"_"+feat+ ".png"
+            #outName = outDir + "/AllCountries_" + feat+ "_Connectivity"
+            # TODO: Put Alphas on plots
+            # TODO: Label lines
+            plt.figure(outName)
+            
+            plt.loglog(pop,featVals, 'ro')
+            x_space = pop# np.linspace(np.min(pop),np.max(pop),len(pop))
+            plt.loglog(x_space, noBorrowFunc(x_space), ':k')
+            plt.loglog(x_space, BorrowFunc(x_space,aTraffic), '--b')
+            xLbl = "Population"
+            yLbl = feat
+            plt.xlabel(xLbl)
+            plt.ylabel(yLbl)
+            ttl = "Scaling with Borrowed Size Model"
+            plt.title(ttl)
+
+            plt.savefig(outName)
+            plt.close()
 
 
-            expectedFeatsStandard = []
-            expectedFeatsBorrow = []
+
+
+
+            expectedFeatsStandard = []                
+            expectedFeatsBorrow = []               
+
 
             for x,y in zip(pop,aTraffic):
                 expectedFeatsStandard.append(noBorrowFunc(x))                
                 expectedFeatsBorrow.append(BorrowFunc(x,y))                
 
+            outName = outDir + "/" + countryListName[:-1]+"_"+feat+ "_ModelComparison"+ ".png"
+            #outName = outDir + "/AllCountries_" + feat+ "_Connectivity"
+            # TODO: Label lines
+            plt.figure(outName)
+            
+            plt.loglog(featVals,expectedFeatsStandard, 'ro')
+            plt.loglog(featVals,expectedFeatsBorrow, 'bo')
+            plt.loglog(featVals,featVals, ':k')
+
+        
+            xLbl = "real Values"
+            yLbl = "expected values (Red: Standard) (Blue: Borrowing)"
+            plt.xlabel(xLbl)
+            plt.ylabel(yLbl)
+            ttl = "Borrowed Size Model vs. Standard Scaling Model"
+            plt.title(ttl)
+
+            plt.savefig(outName)
+            plt.close()
 
 
 
             R2_NoBorrowed = sk.r2_score(featVals,expectedFeatsStandard)
             R2_WithBorrowed = sk.r2_score(featVals,expectedFeatsBorrow)
-            print("For Standard Scaling:\n, R^2 = {}, Beta = {}\n\nFor new model, \nR^2 = {}\nBeta={}\nAlpha={}\n\n".format(R2_NoBorrowed,Beta,R2_WithBorrowed,BetaBF,AlphaBF))
+
+            aicNoBorrowed = aic.aic(featVals, expectedFeatsStandard, 2)
+            aicWithBorrowed = aic.aic(featVals, expectedFeatsBorrow, 3)
+            print("Standard: {}".format(aicNoBorrowed)," Borrowed: {}".format(aicWithBorrowed))
+
+
+            #TODO: Fix [0]
+            Alphas[countryList[0]] = 1/AlphaBF
+            R2Ratios[countryList[0]] = R2_WithBorrowed/R2_NoBorrowed
+            aicRatios[countryList[0]] = aicNoBorrowed/aicWithBorrowed
+
+
+
+            #print("For Standard Scaling:\n, R^2 = {}, Beta = {}\n\nFor new model, \nR^2 = {}\nBeta={}\nAlpha={}\n\n".format(R2_NoBorrowed,Beta,R2_WithBorrowed,BetaBF,AlphaBF))
+            
+        print("Alphas: ")
+        print(str(Alphas))
+        print("R^2 Ratios: ", str(R2Ratios))
+        print("AIC Ratios (>1 means improvement): ", str(aicRatios))
 
             
 
