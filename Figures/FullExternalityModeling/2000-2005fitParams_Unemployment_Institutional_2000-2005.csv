@@ -1,0 +1,5 @@
+,n,BIC difference,AIC difference,Avg Local Term,Avg Visiting Term,Avg Institutional Term,Delta (Standard),Delta (Test Model)
+France,7,0.21,0.16,1.34,,-0.34,0.05,-0.0
+Italy,8,10.71,10.79,2.34,,-1.34,0.23,0.19
+United States,28,-1.58,-0.25,0.9,,0.1,0.0,0.03
+All Countries,76,1.04,3.37,1.17,,-0.17,-0.09,-0.13

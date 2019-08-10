@@ -18,25 +18,28 @@ fUpdated = "FeaturesUS2013_2016.xls"
 fToUpdate = "newFeatures.xls"
 
 # If multiple years are selected, the values are averaged into the output NOTE: 2015 and 2016 are only years with inequality data
-years = ["2016","2017"]
+years = ['2013','2014','2015',"2016"]
 # filenames of data source being cleaned, input
-fIn_Data = "Data/USCrime.xlsx"
+fIn_Data = "Data/USGDPBusNew.xlsx"
 
 ## Specifications for input datafile
 # what does the spreadsheet label as cities? (e.g. METROREG/TIME)
-cityLabel = 'Location Name'
+cityLabel = 'Metropolitan Area Name'
 # what does the spreadsheet label as feature types (e.g. Variables Name)
-featLabel = 'Indicator Name'
+featLabel = 'Industry Name'
 # map features to their type labels in data TODO: allow for selection of features to update
 featTypeLabels = {
     #'NA':'Air Traffic'
    # "POPESTIMATE": "Population"
-   "Violent crime":"Violent Crime",
-   "Total robberies":"Total Robberies",
-   "Property  crime":"Property Crime",
-   "Burglary" : "Burglary",
-   "Larceny- theft": "Larceny & Theft",
-   "Motor  vehicle  theft" : "Motor Behicle Theft"
+  # "Violent crime":"Violent Crime",
+  # "Total robberies":"Total Robberies",
+  # "Property  crime":"Property Crime",
+  # "Burglary" : "Burglary",
+  # "Larceny- theft": "Larceny & Theft",
+  # "Motor  vehicle  theft" : "Motor Behicle Theft"    
+   'All industry total':'Total GDP',
+   'Finance, insurance, real estate, rental, and leasing':'FIRE GDP',
+   'Professional and business services':'Services GDP'
 
 
 
@@ -269,7 +272,7 @@ if not updateCityNames:
     if not firstPass:
 
         # start with (and later add to) existing dataframe from Features.xls
-        outData = pd.read_excel(fOut,sheet_name="United States").set_index('City')
+        outData = pd.read_excel(fOut,sheet_name="United States (Census)").set_index('City')
 
         # drop nan-index entries
         outData = outData[outData.index.notnull()]

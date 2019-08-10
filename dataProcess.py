@@ -23,19 +23,21 @@ fToUpdate = "Features2000_2005.xls"
 # If multiple years are selected, the values are averaged into the output NOTE: 2015 and 2016 are only years with inequality data
 years = ["2000","2001","2002","2003","2004","2005"]
 # filenames of data source being cleaned, input
-fIn_Data = "Data/avia_paoac.xls"
+fIn_Data = "Data/ConnectivitiesNew.xls"
 # filename of country-cities mapping sheet NOTE: Not updated
 fIn_countryCities = "CountryCities"
 ## Specifications for input datafile
 # what does the spreadsheet label as cities? (e.g. METROREG/TIME)
-cityLabel = 'City'
+cityLabel = 'Cities'
 # what does the spreadsheet label as feature types (e.g. Variables Name)
-featLabel = 'Variables Name'
+featLabel = 'Presence times Degree'
 # what does the spreadsheet label as country names (e.g. Metropolitan Areas -> US)
 countryLabel = "Metropolitan Areas"
 # map features to their type labels in data TODO: allow for selection of features to update
 featTypeLabels = {
-    'NA':'Air Traffic'
+   #'':'Air Traffic'
+   'Presence times Degree':'Connectivity (Presence times Degree)'
+
      #'Connectivity (normalized)':'Global Firm Presence (without Connectivity)'
 #    'Population, All ages. Administrative data':'Population',
 #    'GDP (Millions USD, constant prices, constant PPP, base year 2010)':'GDP',
@@ -69,7 +71,7 @@ overwriteData = True
 # set true if you're running on a Knomea Dataset
 KnoemaRun = False
 # set true if the data you're analyzing is organized by year
-timeSeries = True
+timeSeries = False
 
 
 countryCodeToCountry = {
