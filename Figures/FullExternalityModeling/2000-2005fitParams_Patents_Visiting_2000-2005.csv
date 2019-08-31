@@ -1,0 +1,7 @@
+,n,BIC difference,AIC difference,Avg Local Term,Avg Visiting Term,Avg Institutional Term,Delta (Standard),Delta (Test Model),Alpha
+Germany,17,-0.86,-0.02,0.75,0.25,,0.18,0.09,3.0
+Spain,18,-0.26,0.63,1.23,-0.23,,0.15,0.12,-18.0
+France,25,-1.57,-0.36,0.9,0.1,,0.17,0.07,3.0
+United Kingdom,19,-1.5,-0.56,0.77,0.23,,-0.38,-0.6,2.0
+Italy,14,-0.67,-0.03,0.64,0.36,,-0.35,-0.4,1.0
+All Countries,137,-3.58,-0.66,1.14,-0.14,,-0.13,-0.11,-15.0

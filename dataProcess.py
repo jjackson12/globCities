@@ -23,20 +23,20 @@ fToUpdate = "Features2000_2005.xls"
 # If multiple years are selected, the values are averaged into the output NOTE: 2015 and 2016 are only years with inequality data
 years = ["2000","2001","2002","2003","2004","2005"]
 # filenames of data source being cleaned, input
-fIn_Data = "Data/ConnectivitiesNew.xls"
+fIn_Data = "Data/EurostatPatents.xls"
 # filename of country-cities mapping sheet NOTE: Not updated
 fIn_countryCities = "CountryCities"
 ## Specifications for input datafile
 # what does the spreadsheet label as cities? (e.g. METROREG/TIME)
-cityLabel = 'Cities'
+cityLabel = 'METROREG/TIME'
 # what does the spreadsheet label as feature types (e.g. Variables Name)
-featLabel = 'Presence times Degree'
+featLabel = 'Indicator Name'
 # what does the spreadsheet label as country names (e.g. Metropolitan Areas -> US)
-countryLabel = "Metropolitan Areas"
+countryLabel = "Region"
 # map features to their type labels in data TODO: allow for selection of features to update
 featTypeLabels = {
    #'':'Air Traffic'
-   'Presence times Degree':'Connectivity (Presence times Degree)'
+   'PCT Patent Applications, Count (Fractional Count; By Inventor Place of Residence and Priority Year)':'Patents'
 
      #'Connectivity (normalized)':'Global Firm Presence (without Connectivity)'
 #    'Population, All ages. Administrative data':'Population',
@@ -71,19 +71,22 @@ overwriteData = True
 # set true if you're running on a Knomea Dataset
 KnoemaRun = False
 # set true if the data you're analyzing is organized by year
-timeSeries = False
+timeSeries = True
 
 
 countryCodeToCountry = {
     'AUS':'Australia',
+    'AU':'Australia',
     'AT':'Austria',
     'BE':'Belgium',
     'CAN':'Canada',
+    'CA':'Canada',
     'CH':'Switzerland',
     'CL':'Chile',
     'COL':'Colombia',
     'CZ':'Czech Republic',
     'DE':'Germany',
+    'DEA':'Germany',
     'DK':'Denmark',
     'ES':'Spain',
     'EE':'Estonia',
@@ -96,24 +99,30 @@ countryCodeToCountry = {
     'IE':'Ireland',
     'IS':'Iceland',
     'IT':'Italy',
+    'JP':'Japan',
+    'KR':'Korea',
     'JPN':'Japan',
     'KOR':'Korea',
     'LT':'Lithuania',
     'LU':'Luxembourg',
     'LV':'Latvia',
     'MEX':'Mexico',
+    'ME':'Mexico',
     'NO':'Norway',
     'PL':'Poland',
     'PT':'Portugal',
     'SK':'Slovakia',
     'SI':'Slovenia',
     'SE':'Sweden',
-    'USA':'United States'
+    'TR':"Turkey",
+    'RO':"Romania",
+    'USA':'United States',
+    'US':'United States'
 }
 
 def getCountryFromCode(countryCode):
     m = re.search('[A-Z]+',countryCode)
-    return countryCodeToCountry[m.group(0)]
+    return countryCodeToCountry[m.group(0)[0:2]]
 
 
 # How to parse the years of data for a given city
@@ -258,6 +267,8 @@ def splitCountries(rawDataIn,outData,feat=''):
 # in different languages, are the same cities. Cities with more than one way 
 # of spelling will have them separated by '/'
 def cityNameMatch(name1,name2):
+    if "Non-metroplitan regions in" in name1 or "Non-metroplitan regions in" in name2:
+        return False
     newNames = []
     for name in [name1,name2]:
         newName = name.lower()
