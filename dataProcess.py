@@ -23,20 +23,21 @@ fToUpdate = "Features2000_2005.xls"
 # If multiple years are selected, the values are averaged into the output NOTE: 2015 and 2016 are only years with inequality data
 years = ["2000","2001","2002","2003","2004","2005"]
 # filenames of data source being cleaned, input
-fIn_Data = "Data/EurostatPatents.xls"
+fIn_Data = "Data/EuroStatEmployment.xlsx"
 # filename of country-cities mapping sheet NOTE: Not updated
 fIn_countryCities = "CountryCities"
 ## Specifications for input datafile
 # what does the spreadsheet label as cities? (e.g. METROREG/TIME)
-cityLabel = 'METROREG/TIME'
+cityLabel = 'cities Name'
 # what does the spreadsheet label as feature types (e.g. Variables Name)
-featLabel = 'Indicator Name'
+featLabel = 'indic_ur Name'
 # what does the spreadsheet label as country names (e.g. Metropolitan Areas -> US)
-countryLabel = "Region"
+countryLabel = "cities"
+extra_label = True # False, unless filtering on an additional label besides country and city names
 # map features to their type labels in data TODO: allow for selection of features to update
 featTypeLabels = {
    #'':'Air Traffic'
-   'PCT Patent Applications, Count (Fractional Count; By Inventor Place of Residence and Priority Year)':'Patents'
+   'Total employment/jobs (work place based)':'Total Employed'
 
      #'Connectivity (normalized)':'Global Firm Presence (without Connectivity)'
 #    'Population, All ages. Administrative data':'Population',
@@ -61,7 +62,7 @@ def compileCities(dPrior,dNew,feat):
 # filename of data source to be added to
 fOut = "Features2000_2005.xls"
 # if True, include cities in the input dataset that are NOT in the old (compiled) dataset
-addPartialData = True
+addPartialData = False #TODO: Will this work as false? Was True before
 # list of countries to include. Either write "ALL" or give a list
 includeCountries = ['ALL'] 
 # cities to exclude due to aggregation into collective MAs.
@@ -69,7 +70,7 @@ excludeCities = []
 # set to true if you want to overwrite the data already in fOut TODO
 overwriteData = True
 # set true if you're running on a Knomea Dataset
-KnoemaRun = False
+KnoemaRun = True
 # set true if the data you're analyzing is organized by year
 timeSeries = True
 
@@ -79,6 +80,7 @@ countryCodeToCountry = {
     'AU':'Australia',
     'AT':'Austria',
     'BE':'Belgium',
+    'BG':'Bulgaria',
     'CAN':'Canada',
     'CA':'Canada',
     'CH':'Switzerland',
@@ -96,6 +98,8 @@ countryCodeToCountry = {
     'UK':'United Kingdom',
     'EL':'Greece',
     'HU':'Hungary',
+    'HR':'Croatia',
+    'CY':'Cyprus',
     'IE':'Ireland',
     'IS':'Iceland',
     'IT':'Italy',
@@ -108,6 +112,7 @@ countryCodeToCountry = {
     'LV':'Latvia',
     'MEX':'Mexico',
     'ME':'Mexico',
+    'MT':'Malta',
     'NO':'Norway',
     'PL':'Poland',
     'PT':'Portugal',
@@ -151,6 +156,8 @@ def hasData(dat):
 #     - Otherwise, update data
 def updateFromRow(outData,loggedCityName,inRow,inCityName,country,foundMatch):
     retData = outData
+    if extra_label:
+        set_trace()
 
     # if the city is not already in the country, add it here, with "UNKNOWN" tag
     if not foundMatch:
@@ -451,10 +458,17 @@ if not updateCityNames:
         for city in list(inDataRaw.index):
             if city not in cities:
                 cities.append(city)
-        columns = ["Country"] + list(featTypeLabels.values())
+        if extra_label:
+            columns = ["Country","extra_label"] + list(featTypeLabels.values())
+        else:
+            columns = ["Country"] + list(featTypeLabels.values())
+       
         inData = pd.DataFrame(index=cities,columns=columns)
         for cityName,rawDataRow in inDataRaw.iterrows():
             country = getCountryFromCode(rawDataRow[countryLabel])
+            if extra_label:
+                extra_label = rawDataRow["cities"]
+                        
             # the feature name as named in the input datafile
             feat = rawDataRow[featLabel]
             # calculate feature value from average over years
@@ -462,9 +476,11 @@ if not updateCityNames:
             for year in years:
                 featList.append(rawDataRow[year])
             featVal = merge(featList)
-            # update inData TODO: Only doing popuation???
+            # update inData 
             inData[featTypeLabels[feat]][cityName]=featVal
             inData["Country"][cityName] = country
+            if extra_label:
+                inData["extra_label"][cityName] = extra_label
 
 
 
@@ -478,12 +494,23 @@ if not updateCityNames:
         for cityName, cityData in inData.iterrows():
             foundMatch = False
             country = cityData["Country"]
-            # 1) find a match for the cityName
+            is_proper_city = True
+            if extra_label:
+                if len(cityData["extra_label"]) == 2:
+                    is_proper_city = False
+                    print("REJECTED",cityName)
+                elif cityData["extra_label"][-2:] == "K1":
+                    is_proper_city = False
+                    print("REJECTED",cityName)
 
+            # 1) find a match for the cityName
             for loggedCityName in list(outData[country].index):
                 # check for matches with outData
                 # skip over cities to be excluded here
-                if cityNameMatch(cityName,loggedCityName) and not city in excludeCities:
+
+                        
+                                                        
+                if cityNameMatch(cityName,loggedCityName) and not city in excludeCities and is_proper_city:
                     # 2) once a match is found, update that country's data frame with that city's info
                     #     - if an entry for that city and property already exists, add the values
                     #     - Otherwise, update data
@@ -491,7 +518,7 @@ if not updateCityNames:
                     outData = updateFromRow(outData,loggedCityName,cityData,cityName,country,foundMatch)
                     break
             # if no match exists, add it to "unmatched" output
-            if not foundMatch:
+            if not foundMatch and is_proper_city:
                 outData = updateFromRow(outData,cityName,cityData,cityName,country,foundMatch)
 
 

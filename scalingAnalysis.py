@@ -50,8 +50,7 @@ def getAllCountries():
 
 
 
-# NOTE: y0 is actually log(y0), which is what getScaleParams returns
-# TODO: Fix this for later
+
 def getResiduals(pop,feat,Beta,y0,featMean=1,manResCalc=resCalc):
     residuals = []
     for cityPop,cityFeat in zip(pop,feat):
@@ -127,9 +126,9 @@ def getDataFromList(data,countryList,features):
     return retData
 
 # returns Beta, y0 fit params
-def getScaleParams(plotData,feat,linearFeats):
+def getScaleParams(plotData,feat,linearFeats,scaling_pop="Population"):
     #extract Population as x-axis and the feature you're analyzing as the y-axes, such as GDP
-    pop = plotData["Population"]
+    pop = plotData[scaling_pop]
     y = plotData[feat]
     # transform to log-log space
     if not feat in linearFeats:
@@ -140,11 +139,10 @@ def getScaleParams(plotData,feat,linearFeats):
     return Beta, np.exp(y0)
     
 
-
-def getNetConnectivities(connectivityTags,connData,manResCalc=resCalc):
+def getNetConnectivities(connectivityTags,connData,manResCalc=resCalc,scaling_pop="Population"):
     finalConnectivities = np.zeros(len(connData.index))
     for connectivityTag in connectivityTags.keys():
         finalConnectivities = finalConnectivities + connectivityTags[connectivityTag] * np.array(connData[connectivityTag])
-    # for considering connectivity as deviation from scaling expectation of connectivity
-    BetaC,y0C = np.polyfit(np.log(connData["Population"]),np.log(finalConnectivities),1)
-    return getResiduals(connData["Population"],finalConnectivities,BetaC,np.exp(y0C),featMean=np.average(finalConnectivities),manResCalc= manResCalc)
+        # for considering connectivity as deviation from scaling expectation of connectivity
+        BetaC,y0C = np.polyfit(np.log(connData[scaling_pop]),np.log(finalConnectivities),1)
+    return getResiduals(connData[scaling_pop],finalConnectivities,BetaC,np.exp(y0C),featMean=np.average(finalConnectivities),manResCalc= manResCalc)
